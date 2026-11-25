@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ProjectsViewInfo>
+	<DiagramOpenInfos activeDiagramId="dia0000000000001">
+		<Info bounds="Re:0.0,0.0,1510.0,664.0" diagramId="dia0000000000001" maximized="true" offsetX="17" offsetY="60"/>
+		<Info bounds="Re:0.0,0.0,1510.0,664.0" diagramId="dia0000000000082" maximized="true" offsetX="17" offsetY="60"/>
+		<Info bounds="Re:0.0,0.0,1510.0,664.0" diagramId="dia0000000000179" maximized="true" offsetX="17" offsetY="60"/>
+		<Info bounds="Re:0.0,0.0,1510.0,664.0" diagramId="dia0000000000438" maximized="true" offsetX="17" offsetY="60"/>
+		<Info bounds="Re:0.0,0.0,1510.0,664.0" diagramId="dia0000000000575" maximized="true" offsetX="17" offsetY="60"/>
+		<Info bounds="Re:0.0,0.0,1510.0,664.0" diagramId="dia0000000000807" maximized="true" offsetX="17" offsetY="60"/>
+		<Info bounds="Re:0.0,0.0,1510.0,664.0" diagramId="dia0000000000849" maximized="true" offsetX="17" offsetY="60"/>
+	</DiagramOpenInfos>
+	<DiagramLastActivated>
+		<Diagram id="dia0000000000001" time="1795638330366"/>
+		<Diagram id="dia0000000000082" time="1795638329366"/>
+		<Diagram id="dia0000000000179" time="1795638328366"/>
+		<Diagram id="dia0000000000438" time="1795638327366"/>
+		<Diagram id="dia0000000000575" time="1795638326366"/>
+		<Diagram id="dia0000000000807" time="1795638325366"/>
+		<Diagram id="dia0000000000849" time="1795638324366"/>
+		<Diagram id="Use Case Statement" time="0"/>
+		<Diagram id="Use Case" time="0"/>
+		<Diagram id="User Story" time="0"/>
+		<Diagram id="Sprint" time="0"/>
+		<Diagram id="Agile" time="0"/>
+	</DiagramLastActivated>
+</ProjectsViewInfo>

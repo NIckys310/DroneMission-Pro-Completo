@@ -1,0 +1,24 @@
+# ============================================================================================
+# DOCUMENTACIÓN · application-test.yml
+#
+# QUÉ ES:        La configuración SOLO para las pruebas.
+# QUÉ HACE:      Usa una base de datos de prueba aparte y valores rápidos para que
+#                ./mvnw test no toque tus datos.
+# SI LO CAMBIAS: No afecta a la app real; solo a las pruebas.
+# ============================================================================================
+# Configuración para las pruebas: MongoDB embebido con una base de datos propia.
+spring:
+  data:
+    mongodb:
+      database: dronemission-test
+app:
+  security:
+    # Todas las pruebas usan la misma IP: se sube el límite para no bloquear la suite
+    auth-requests-per-minute: 100000
+  storage:
+    path: ./target/test-uploads
+  simulation:
+    # El simulador automático queda prácticamente apagado; las pruebas llaman tick() manualmente
+    tick-ms: 3600000
+    # 3600000 ms × 0.002 = 7,2 s de vuelo simulado por cada tick manual
+    time-factor: 0.002

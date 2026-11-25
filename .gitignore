@@ -1,0 +1,10 @@
+# MongoDB local: binarios y datos pesados (se descargan aparte)
+1-Codigo/mongodb-local/bin/
+1-Codigo/mongodb-local/data/
+1-Codigo/mongodb-local/log/
+# Temporales y copias
+1-Codigo/.playwright-mcp/
+*.bak_*
+*.vpp.working
+~$*
+*.zip

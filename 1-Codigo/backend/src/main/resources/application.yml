@@ -1,0 +1,122 @@
+# ============================================================================================
+# DOCUMENTACIÓN · application.yml
+#
+# QUÉ ES:        LA CONFIGURACIÓN del backend.
+# QUÉ HACE:      Base de datos, puerto, JWT, CORS, carpeta de archivos, seguridad y
+#                simulador. Cada valor ${VARIABLE:valor} se puede cambiar con una
+#                variable de entorno sin tocar el código.
+# SI LO CAMBIAS: Cambia los números de abajo (están explicados línea por línea) y
+#                reinicia el backend.
+# ============================================================================================
+# =====================================================================
+# DroneMission Pro - Configuración del backend
+# Los valores sensibles se leen de variables de entorno (ver .env.example).
+# Base de datos: MongoDB.
+#  - Perfil por defecto "embedded": el backend arranca su propio MongoDB local
+#    (no requiere instalar nada; los datos demo se cargan al arrancar).
+#  - Perfil "mongo": se conecta a un MongoDB real (local o MongoDB Atlas) con MONGODB_URI.
+#    SPRING_PROFILES_ACTIVE=mongo  MONGODB_URI=mongodb+srv://usuario:clave@cluster/dronemission
+# =====================================================================
+spring:
+  application:
+    name: dronemission-pro
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:embedded}
+  data:
+    mongodb:
+      # Nombre de la base de datos dentro del servidor MongoDB
+      database: ${MONGODB_DATABASE:dronemission}
+      # Crea los índices únicos (@Indexed(unique = true)) al arrancar: código de drone, correo, etc.
+      auto-index-creation: true
+  servlet:
+    multipart:
+      # >> Tamaño máximo de un archivo de evidencia. Súbelo si necesitas videos más grandes.
+      max-file-size: 20MB
+      max-request-size: 25MB
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  # PORT lo define la plataforma en la nube (Render); en local se usa 8080
+  # >> Puerto del backend. Si lo cambias, cambia "backend" en frontend/vite.config.ts.
+  port: ${PORT:${SERVER_PORT:8080}}
+  # Respeta X-Forwarded-Proto/Host cuando corre detrás del proxy HTTPS de la nube
+  forward-headers-strategy: framework
+  error:
+    include-message: always
+
+app:
+  jwt:
+    # Solo para desarrollo. En producción define JWT_SECRET (mínimo 32 caracteres).
+    secret: ${JWT_SECRET:clave-de-desarrollo-dronemission-pro-cambiar-en-produccion-2026}
+    # >> Cuántos minutos dura la sesión (480 = 8 horas). Después hay que volver a iniciar sesión.
+    expiration-minutes: ${JWT_EXPIRATION_MINUTES:480}
+  cors:
+    # >> Qué direcciones de frontend pueden llamar al backend (CORS). Si el frontend cambia de puerto, agrégalo aquí.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+  storage:
+    path: ${STORAGE_PATH:./uploads}
+  security:
+    # Usuarios demo (contraseña pública Demo2026!). En la nube: false
+    demo-users: ${APP_DEMO_USERS:true}
+    registration-enabled: ${APP_REGISTRATION_ENABLED:true}
+    # Muestra el token de recuperación en pantalla (simulación). En la nube: false
+    show-reset-token: ${APP_SHOW_RESET_TOKEN:true}
+    # >> Intentos de contraseña equivocada antes de bloquear la cuenta.
+    max-failed-attempts: ${APP_MAX_FAILED_ATTEMPTS:5}
+    # >> Minutos que la cuenta queda bloqueada.
+    lock-minutes: ${APP_LOCK_MINUTES:15}
+    # >> Peticiones de login/registro permitidas por IP en un minuto (anti fuerza bruta).
+    auth-requests-per-minute: ${APP_AUTH_REQUESTS_PER_MINUTE:20}
+    # Administrador propietario: se crea al arrancar si se definen estas variables (secretas)
+    admin:
+      email: ${ADMIN_EMAIL:}
+      username: ${ADMIN_USERNAME:}
+      first-name: ${ADMIN_FIRST_NAME:}
+      last-name: ${ADMIN_LAST_NAME:}
+      password: ${ADMIN_PASSWORD:}
+      reset-password: ${ADMIN_RESET_PASSWORD:false}
+  simulation:
+    # Cada cuántos milisegundos el drone virtual envía una lectura
+    # >> SI CAMBIAS ESTO: cada cuánto se mueve el drone virtual (2000 = 2 s). Más bajo = más lecturas y más datos guardados.
+    tick-ms: ${SIMULATION_TICK_MS:2000}
+    # Aceleración del tiempo simulado (3 = cada segundo real equivale a 3 s de vuelo)
+    # >> Acelera el tiempo del vuelo: 3 = un segundo real son 3 s de vuelo. Súbelo para que las misiones terminen más rápido en la demo.
+    time-factor: ${SIMULATION_TIME_FACTOR:3}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+
+logging:
+  level:
+    com.dronemission: INFO
+
+---
+# Perfil "embedded": MongoDB embebido (Flapdoodle). La primera vez descarga MongoDB 7.0
+# y lo guarda en la carpeta ~/.embedmongo. Los datos viven mientras el backend esté encendido.
+spring:
+  config:
+    activate:
+      on-profile: embedded
+de:
+  flapdoodle:
+    mongodb:
+      embedded:
+        version: 7.0.14
+
+---
+# Perfil "mongo": servidor MongoDB real (instalado o MongoDB Atlas en la nube)
+spring:
+  config:
+    activate:
+      on-profile: mongo
+  autoconfigure:
+    # Apaga el MongoDB embebido: se usa el servidor de MONGODB_URI
+    exclude: de.flapdoodle.embed.mongo.spring.autoconfigure.EmbeddedMongoAutoConfiguration
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/dronemission}

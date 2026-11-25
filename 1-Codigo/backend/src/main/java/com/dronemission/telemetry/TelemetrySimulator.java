@@ -1,0 +1,188 @@
+// ============================================================================================
+// DOCUMENTACIÓN · telemetry/TelemetrySimulator.java
+//
+// QUÉ ES:        EL DRONE VIRTUAL.
+// QUÉ HACE:      Cada tick (2 s, application.yml) toma las misiones EN_VUELO, mueve el
+//                drone hacia el siguiente punto, le baja la batería según la
+//                estrategia, guarda la lectura y, si la batería baja del 20 %, crea un
+//                incidente. Al llegar al último punto finaliza la misión.
+// SI LO CAMBIAS: Cambia LOW_BATTERY_THRESHOLD para el aviso de batería, CLIMB_RATE_MS
+//                para la velocidad de subida; la frecuencia en application.yml
+//                (tick-ms).
+// ============================================================================================
+package com.dronemission.telemetry;
+
+import com.dronemission.drones.Drone;
+import com.dronemission.incidents.IncidentService;
+import com.dronemission.incidents.IncidentSeverity;
+import com.dronemission.incidents.IncidentType;
+import com.dronemission.missions.*;
+import com.dronemission.missions.strategy.GeoPoint;
+import com.dronemission.missions.strategy.MissionStrategy;
+import com.dronemission.missions.strategy.MissionStrategyResolver;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.Random;
+
+/**
+ * DRONE VIRTUAL: simulador de telemetría.
+ *
+ * No hay un drone físico. Cada "tick" (por defecto cada 2 s) el simulador toma
+ * las misiones EN_VUELO y mueve su drone virtual hacia el siguiente punto del
+ * plan de vuelo programado, calculando posición, altitud, velocidad, batería,
+ * distancia, temperatura y tiempo. Cada lectura se guarda en la tabla telemetria
+ * marcada como simulada. Si la misión se pausa, el drone deja de avanzar.
+ *
+ * Es un bean Singleton de Spring: existe un único motor de simulación compartido.
+ * El estado NO se guarda en memoria: se reconstruye desde la última lectura,
+ * así la simulación continúa aunque se reinicie el servidor.
+ *
+ * time-factor acelera el tiempo simulado para que una demo dure pocos minutos.
+ */
+@Slf4j
+@Component
+public class TelemetrySimulator {
+
+    // >> SI CAMBIAS ESTO: cambia en qué % de batería se crea el incidente automático de "batería baja".
+    private static final int LOW_BATTERY_THRESHOLD = 20;
+    // >> Velocidad de subida/bajada del drone virtual (metros por segundo). Más alto = despega más rápido.
+    private static final double CLIMB_RATE_MS = 3.0;
+    /** Constante AMBIENT_TEMPERATURE_C: temperatura de ambiente (°C). */
+    private static final double AMBIENT_TEMPERATURE_C = 24.0;
+
+    /** Dependencia inyectada por Spring (por constructor): repositorio de misión. */
+    private final MissionRepository missionRepository;
+    /** Dependencia inyectada por Spring (por constructor): repositorio de telemetría. */
+    private final TelemetryRepository telemetryRepository;
+    /** Dependencia inyectada por Spring (por constructor): selector de estrategia de misión. */
+    private final MissionStrategyResolver strategyResolver;
+    /** Dependencia inyectada por Spring (por constructor): servicio de incidente. */
+    private final IncidentService incidentService;
+    /** Atributo secondsPerTick (double): paso de por de segundos. */
+    private final double secondsPerTick;
+    /** Dependencia inyectada por Spring (por constructor): aleatorio. */
+    private final Random random = new Random();
+
+    public TelemetrySimulator(MissionRepository missionRepository,
+                              TelemetryRepository telemetryRepository, MissionStrategyResolver strategyResolver,
+                              IncidentService incidentService,
+                              @Value("${app.simulation.tick-ms}") long tickMs,
+                              @Value("${app.simulation.time-factor}") double timeFactor) {
+        this.missionRepository = missionRepository;
+        this.telemetryRepository = telemetryRepository;
+        this.strategyResolver = strategyResolver;
+        this.incidentService = incidentService;
+        this.secondsPerTick = tickMs / 1000.0 * timeFactor;
+    }
+
+    // >> Se ejecuta solo cada tick-ms (2000 ms en application.yml). Empieza 5 s después de arrancar.
+    @Scheduled(fixedRateString = "${app.simulation.tick-ms}", initialDelay = 5000)
+    @Transactional
+    public void tick() {
+        for (Mission mission : missionRepository.findByStatus(MissionStatus.EN_VUELO)) {
+            try {
+                simulateStep(mission);
+            } catch (RuntimeException e) {
+                log.warn("No se pudo simular la misión {}: {}", mission.getCode(), e.getMessage());
+            }
+        }
+    }
+
+    /** Avanza el drone virtual de una misión un paso de simulación. */
+    void simulateStep(Mission mission) {
+        // MongoDB: el plan de vuelo viene embebido en la misión (ya ordenado por secuencia)
+        List<Waypoint> plan = mission.getFlightPlan();
+        Optional<Drone> droneOpt = mission.getActiveAssignment().map(MissionAssignment::getDrone);
+        if (plan.size() < 2 || droneOpt.isEmpty()) {
+            return;
+        }
+        Drone drone = droneOpt.get();
+        MissionStrategy strategy = strategyResolver.forType(mission.getType());
+        Telemetry last = telemetryRepository.findTopByMissionIdOrderByIdDesc(mission.getId()).orElse(null);
+
+        // Estado actual del drone virtual (o estado inicial en el punto de despegue)
+        GeoPoint position = last == null ? FlightPlanService.toPoint(plan.get(0)) : new GeoPoint(last.getLatitude(), last.getLongitude());
+        double altitude = last == null ? 0 : last.getAltitudeM();
+        double distance = last == null ? 0 : last.getDistanceM();
+        int flightTime = last == null ? 0 : last.getFlightTimeS();
+        int targetIndex = last == null ? 1 : last.getCurrentWaypoint();
+        int startBattery = telemetryRepository.findTopByMissionIdOrderByIdAsc(mission.getId())
+                .map(Telemetry::getBattery).orElse(drone.getBatteryLevel());
+
+        if (targetIndex >= plan.size()) {
+            return; // ruta completada: el drone espera en tierra a que el piloto finalice
+        }
+
+        // Movimiento horizontal hacia el siguiente punto del plan
+        Waypoint target = plan.get(targetIndex);
+        GeoPoint targetPoint = FlightPlanService.toPoint(target);
+        double speedMs = strategy.cruiseSpeedKmh() / 3.6 * (0.9 + random.nextDouble() * 0.2);
+        double step = speedMs * secondsPerTick;
+        double remaining = position.distanceTo(targetPoint);
+        GeoPoint next;
+        if (step >= remaining) {
+            next = targetPoint;
+            step = remaining;
+            targetIndex++;
+        } else {
+            next = position.interpolate(targetPoint, step / remaining);
+        }
+
+        // Movimiento vertical: sube o baja hacia la altitud del punto objetivo
+        double maxClimb = CLIMB_RATE_MS * secondsPerTick;
+        double altitudeDelta = Math.max(-maxClimb, Math.min(maxClimb, target.getAltitudeM() - altitude));
+        double newAltitude = Math.max(0, altitude + altitudeDelta + (target.getAltitudeM() > 0 ? random.nextGaussian() * 0.3 : 0));
+        boolean landed = targetIndex >= plan.size();
+        if (landed) {
+            newAltitude = 0;
+        }
+
+        int newFlightTime = flightTime + (int) Math.round(secondsPerTick);
+        int battery = (int) Math.max(0, Math.round(startBattery - strategy.batteryDrainPerMinute() * newFlightTime / 60.0));
+        double temperature = AMBIENT_TEMPERATURE_C + 6.0 * newFlightTime / 600.0 + random.nextGaussian() * 0.2;
+
+        Telemetry reading = new Telemetry();
+        reading.setMission(mission);
+        reading.setLatitude(round6(next.latitude()));
+        reading.setLongitude(round6(next.longitude()));
+        reading.setAltitudeM(round2(newAltitude));
+        reading.setSpeedKmh(landed ? 0 : round2(step / secondsPerTick * 3.6));
+        reading.setBattery(battery);
+        reading.setDistanceM(round2(distance + step));
+        reading.setTemperatureC(round2(temperature));
+        reading.setFlightTimeS(newFlightTime);
+        reading.setCurrentWaypoint(targetIndex);
+        reading.setSimulated(true);
+        telemetryRepository.save(reading);
+
+        int previousBattery = last == null ? startBattery : last.getBattery();
+        if (previousBattery > LOW_BATTERY_THRESHOLD && battery <= LOW_BATTERY_THRESHOLD) {
+            incidentService.registerSystemIncident(mission, IncidentType.BATERIA_BAJA, IncidentSeverity.ALTA,
+                    "Batería del drone " + drone.getCode() + " en " + battery + " % (alerta automática del sistema).");
+        }
+    }
+
+    /**
+     * 6 de round.
+     * @param v v (double)
+     * @return double
+     */
+    private static double round6(double v) {
+        return Math.round(v * 1_000_000d) / 1_000_000d;
+    }
+
+    /**
+     * 2 de round.
+     * @param v v (double)
+     * @return double
+     */
+    private static double round2(double v) {
+        return Math.round(v * 100d) / 100d;
+    }
+}
