@@ -8,3 +8,4 @@
 *.vpp.working
 ~$*
 *.zip
+*.lck
