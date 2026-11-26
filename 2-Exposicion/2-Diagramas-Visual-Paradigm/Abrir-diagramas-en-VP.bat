@@ -7,5 +7,5 @@ if not errorlevel 1 (
   pause >nul
   goto espera
 )
-copy /Y "%~dp0pestanas-vp.xml" "%APPDATA%\VisualParadigm\ws\.vpprefdata\projectsViewInfo\L4TEiEWGAqCgDABZ" >nul
+copy /Y "%~dp0pestanas-vp.xml" "%APPDATA%\VisualParadigm\ws\.vpprefdata\projectsViewInfo\V7z6qEWGAqACBgBZ" >nul
 start "" "C:\Program Files\Visual Paradigm CE 18.1\bin\Visual Paradigm.exe" "%~dp0DroneMission-Pro-Vistas.vpp"
